@@ -7,13 +7,20 @@ var DEFAULTS = {
   footprintCount: 50,
   maxDeathMarks: 10,
   maxCrushPoints: 8,
-  playerRadius: 0.75,
-  crowdRadius: 0.75,
-  crushStrength: 1.0,
-  sunDirection: new THREE.Vector3(-0.27, 0.94, 0.4).normalize(),
-  sunColor: new THREE.Color(1, 0.94, 0.78),
-  sunIntensity: 2.6,
-  ambientColor: new THREE.Color(0.08, 0.075, 0.055)
+  playerRadius: 1.05,
+  crowdRadius: 1.05,
+  crushStrength: 1.65,
+  windDirection: new THREE.Vector2(0.92, 0.38).normalize(),
+  windStrength: 1.0,
+  fanEnabled: false,
+  fanPosition: new THREE.Vector2(-4, -2),
+  fanDirection: new THREE.Vector2(1, 0.15).normalize(),
+  fanStrength: 1.35,
+  fanRadius: 5.5,
+  sunDirection: new THREE.Vector3(-0.34, 0.9, 0.28).normalize(),
+  sunColor: new THREE.Color(1, 0.96, 0.78),
+  sunIntensity: 3.0,
+  ambientColor: new THREE.Color(0.065, 0.08, 0.052)
 };
 
 var SHARED_DUMMY = new THREE.Object3D();
@@ -74,11 +81,11 @@ function createGroundMaterial(instance) {
         '#include <begin_vertex>',
         'vec3 wp0 = (modelMatrix * vec4(position, 1.0)).xyz;',
         'float pd = length(wp0.xz - uPlayerPos.xz);',
-        'float wakeR = max(uPlayerCrushRadius * 1.35, 0.08);',
+        'float wakeR = max(uPlayerCrushRadius * 1.45, 0.08);',
         'float playerWake = smoothstep(wakeR, 0.0, pd);',
         'float dashWake = smoothstep(5.0, 0.0, length(wp0.xz - uDashPos.xz)) * uDashLife;',
         'float wind = sin(wp0.x * 0.34 + wp0.z * 0.22 + uGrassTime * 1.8) * 0.5 + 0.5;',
-        'transformed.z += (wind * 0.018 - playerWake * 0.018 - dashWake * 0.026);'
+        'transformed.z += (wind * 0.014 - playerWake * 0.026 - dashWake * 0.03);'
       ].join('\n')
     );
 
@@ -108,16 +115,16 @@ function createGroundMaterial(instance) {
         'float broad = grassNoise(gp * 0.13);',
         'float fine = grassNoise(gp * 1.45 + broad);',
         'float pebble = grassNoise(gp * 5.0 + vec2(3.1, 7.4));',
-        'float trackR = max(uPlayerCrushRadius * 0.95, 0.06);',
+        'float trackR = max(uPlayerCrushRadius * 1.08, 0.06);',
         'float track = smoothstep(trackR, 0.0, length(gp - uPlayerPos.xz));',
         'float dashTrack = smoothstep(3.8, 0.0, length(gp - uDashPos.xz)) * uDashLife;',
-        'vec3 dirtDark = vec3(0.06, 0.035, 0.015);',
-        'vec3 dirtMid = vec3(0.12, 0.07, 0.03);',
-        'vec3 dirtWarm = vec3(0.16, 0.09, 0.04);',
+        'vec3 dirtDark = vec3(0.045, 0.028, 0.012);',
+        'vec3 dirtMid = vec3(0.115, 0.068, 0.029);',
+        'vec3 dirtWarm = vec3(0.18, 0.095, 0.04);',
         'vec3 gcol = mix(dirtDark, dirtMid, broad);',
         'gcol = mix(gcol, dirtWarm, fine * 0.30);',
         'gcol = mix(gcol, dirtDark * 0.8, pebble * 0.12);',
-        'gcol = mix(gcol, dirtDark * 0.7, track * 0.25 + dashTrack * 0.18);',
+        'gcol = mix(gcol, dirtDark * 0.64, track * 0.38 + dashTrack * 0.18);',
         'float gScorch = 0.0;',
         'for (int i = 0; i < ' + instance.maxDeathMarks + '; i++) {',
         '  if (i >= uDeathMarkCount) break;',
@@ -166,13 +173,14 @@ function createBladeMesh(instance) {
     var spreadA = bi * 2.399963229728653;
     var faceA = spreadA + ((bi % 5) - 2) * 0.19;
     var ringT = ((bi * 37) % 100) / 100;
-    var rootR = 0.015 + ringT * 0.13;
+    var rootR = 0.018 + ringT * 0.145;
     var variety = bhash(bi * 7 + 3);
-    var widthBase = 0.007 + variety * 0.013;
+    var widthBase = 0.006 + variety * 0.017;
     var widthTaper = 0.15 + bhash(bi * 13 + 1) * 0.5;
-    var h = instance.bladeHeight * (0.45 + bhash(bi * 11 + 5) * 0.6);
-    var curvature = 0.04 + bhash(bi * 19 + 7) * 0.12;
-    var curveBias = (bhash(bi * 23 + 9) - 0.5) * 0.06;
+    var h = instance.bladeHeight * (0.36 + bhash(bi * 11 + 5) * 0.76);
+    var curvature = 0.055 + bhash(bi * 19 + 7) * 0.17;
+    var curveBias = (bhash(bi * 23 + 9) - 0.5) * 0.09;
+    var droop = bhash(bi * 31 + 17) * 0.055;
     var rootX = Math.cos(spreadA) * rootR;
     var rootZ = Math.sin(spreadA) * rootR;
     var ca = Math.cos(faceA);
@@ -184,8 +192,8 @@ function createBladeMesh(instance) {
       var t2 = t * t;
       var bendFwd = curvature * t2;
       var bendSide = curveBias * t2;
-      var segY = h * t;
-      var w = widthBase * (1.0 - t * widthTaper);
+      var segY = h * t - droop * t2 * t;
+      var w = widthBase * (1.0 - t * widthTaper) * (1.0 - t * 0.22);
       var cx = rootX + ca * bendFwd + (-sa) * bendSide;
       var cz = rootZ + sa * bendFwd + ca * bendSide;
       var sideX = -sa * w;
@@ -243,6 +251,13 @@ function createBladeMesh(instance) {
       uPlayerCrushRadius: { value: instance.crushConfig.playerRadius },
       uCrowdCrushRadius: { value: instance.crushConfig.crowdRadius },
       uCrushStrength: { value: instance.crushConfig.strength },
+      uWindDir: { value: instance.windConfig.direction.clone() },
+      uWindStrength: { value: instance.windConfig.strength },
+      uFanPos: { value: instance.windConfig.fanPosition.clone() },
+      uFanDir: { value: instance.windConfig.fanDirection.clone() },
+      uFanStrength: { value: instance.windConfig.fanStrength },
+      uFanRadius: { value: instance.windConfig.fanRadius },
+      uFanEnabled: { value: instance.windConfig.fanEnabled ? 1 : 0 },
       uSunDir: { value: instance.sunDirection.clone() },
       uSunColor: { value: cloneColorVec3(instance.sunColor) },
       uSunIntensity: { value: instance.sunIntensity },
@@ -262,12 +277,20 @@ function createBladeMesh(instance) {
       'uniform float uPlayerCrushRadius;',
       'uniform float uCrowdCrushRadius;',
       'uniform float uCrushStrength;',
+      'uniform vec2 uWindDir;',
+      'uniform float uWindStrength;',
+      'uniform vec2 uFanPos;',
+      'uniform vec2 uFanDir;',
+      'uniform float uFanStrength;',
+      'uniform float uFanRadius;',
+      'uniform float uFanEnabled;',
       'attribute float iPhase;',
       'attribute float iTone;',
       'varying vec2 vUv;',
       'varying float vTone;',
       'varying float vReact;',
       'varying float vTip;',
+      'varying float vCrush;',
       'varying float vScorch;',
       'varying vec3 vWorldNormal;',
       'void main() {',
@@ -280,35 +303,66 @@ function createBladeMesh(instance) {
       '  vTip = uv.y;',
       '  vec2 fromPlayer = baseW.xz - uPlayerPos.xz;',
       '  float distP = length(fromPlayer);',
-      '  vec2 away = normalize(fromPlayer + vec2(0.0001, 0.0001));',
+      '  vec2 moveAway = normalize(-uPlayerVel.xz + vec2(0.0001, 0.0001));',
+      '  vec2 away = distP > 0.001 ? fromPlayer / distP : moveAway;',
+      '  vec2 fromPlayerVertex = world.xz - uPlayerPos.xz;',
+      '  float distPV = length(fromPlayerVertex);',
+      '  vec2 vertexAway = distPV > 0.001 ? fromPlayerVertex / distPV : away;',
       '  float speedT = clamp(length(uPlayerVel.xz) / 9.0, 0.0, 1.0);',
-      '  float crush = smoothstep(uPlayerCrushRadius, 0.0, distP);',
+      '  float pressureRadius = uPlayerCrushRadius * 1.34;',
+      '  float crush = smoothstep(pressureRadius, 0.0, distPV);',
+      '  float crushCore = smoothstep(uPlayerCrushRadius * 0.58, 0.0, distPV);',
+      '  vec2 crushDir = vertexAway;',
       '  for (int ci = 0; ci < ' + instance.maxCrushPoints + '; ci++) {',
       '    if (ci >= uCrushCount) break;',
-      '    vec2 cd2 = baseW.xz - uCrushPoints[ci];',
+      '    vec2 cd2 = world.xz - uCrushPoints[ci];',
       '    float cdsq = dot(cd2, cd2);',
-      '    crush = max(crush, 1.0 - smoothstep(0.0, uCrowdCrushRadius * uCrowdCrushRadius, cdsq));',
+      '    float crowdRadius = uCrowdCrushRadius * 1.34;',
+      '    float crowdCrush = 1.0 - smoothstep(0.0, crowdRadius * crowdRadius, cdsq);',
+      '    float crowdCore = 1.0 - smoothstep(0.0, uCrowdCrushRadius * uCrowdCrushRadius * 0.34, cdsq);',
+      '    if (crowdCrush > crush) {',
+      '      crush = crowdCrush;',
+      '      crushCore = max(crushCore, crowdCore);',
+      '      crushDir = cdsq > 0.000001 ? cd2 * inversesqrt(cdsq) : moveAway;',
+      '    }',
       '  }',
-      '  float crushAmt = crush * uCrushStrength;',
+      '  float crushAmt = clamp(crush * uCrushStrength, 0.0, 1.45);',
+      '  float crushCoreAmt = clamp(crushCore * uCrushStrength, 0.0, 1.0);',
       '  float idleOuter = max(uPlayerCrushRadius * 1.4, 0.1);',
       '  float idleInner = max(uPlayerCrushRadius * 0.3, 0.03);',
       '  float walkOuter = max(uPlayerCrushRadius * 1.9, 0.12);',
       '  float walkInner = max(uPlayerCrushRadius * 0.42, 0.04);',
       '  float idle = smoothstep(idleOuter, idleInner, distP) * 0.5;',
       '  float walk = smoothstep(walkOuter, walkInner, distP) * speedT * 0.45;',
-      '  float react = idle + walk;',
-      '  vec2 windDir = normalize(vec2(0.65, 0.34));',
-      '  float wPhase = iPhase + baseW.x * 0.28 + baseW.z * 0.18;',
-      '  float wind = sin(uTime * 0.8 + wPhase) * 0.6 + sin(uTime * 0.42 + wPhase * 1.7 + iTone * 1.5) * 0.4;',
+      '  float react = (idle + walk) * (1.0 - crush * 0.85);',
+      '  vec2 windDir = normalize(uWindDir + vec2(0.0001, 0.0001));',
+      '  float wTravel = dot(baseW.xz, windDir) * 1.45 - uTime * 1.8 + iPhase;',
+      '  float gust = 0.62 + 0.38 * sin(wTravel) + 0.12 * sin(wTravel * 2.37 + iTone * 4.0);',
+      '  float wind = max(0.0, gust) * uWindStrength;',
+      '  vec2 fanDelta = world.xz - uFanPos;',
+      '  vec2 fanDir = normalize(uFanDir + vec2(0.0001, 0.0001));',
+      '  float fanAhead = dot(fanDelta, fanDir);',
+      '  float fanSide = abs(fanDelta.x * fanDir.y - fanDelta.y * fanDir.x);',
+      '  float fanReach = smoothstep(uFanRadius, 0.0, fanAhead);',
+      '  float fanCone = smoothstep(uFanRadius * 0.42, 0.0, fanSide);',
+      '  float fanWind = step(0.0, fanAhead) * fanReach * fanCone * uFanStrength * uFanEnabled;',
       '  vec2 dashDir = normalize(uDashDir.xz + vec2(0.0001, 0.0001));',
       '  vec2 dashDelta = baseW.xz - uDashPos.xz;',
       '  float dashDist = length(dashDelta);',
       '  float dashCone = smoothstep(-0.25, 0.85, dot(normalize(dashDelta + vec2(0.0001)), dashDir));',
       '  float dash = smoothstep(5.6, 0.0, dashDist) * dashCone * uDashLife;',
-      '  world.xz += (windDir * wind * 0.11 + away * react * 0.28 + dashDir * dash * 0.42) * tip;',
-      '  world.y -= (react * 0.12 + dash * 0.16 + crushAmt * 0.38) * tip;',
-      '  world.xz += away * crushAmt * 0.12 * tip;',
+      '  float pressTip = smoothstep(0.015, 0.7, uv.y);',
+      '  float fold = clamp(crushAmt * 1.55 + crushCoreAmt * 0.35, 0.0, 1.0);',
+      '  float heightFromRoot = max(world.y - baseW.y, 0.0);',
+      '  world.xz += (windDir * wind * 0.115 + fanDir * fanWind * 0.26 + away * react * 0.28 + dashDir * dash * 0.42) * tip;',
+      '  world.xz += crushDir * crushAmt * (0.24 + heightFromRoot * 1.18) * pressTip * (1.0 - crushCoreAmt * 0.38);',
+      '  world.xz += moveAway * crushCoreAmt * heightFromRoot * 0.42 * pressTip;',
+      '  world.y -= (react * 0.10 + dash * 0.14) * tip;',
+      '  world.y = mix(world.y, baseW.y + heightFromRoot * 0.018, fold * pressTip);',
+      '  world.y -= crushCoreAmt * 0.018 * pressTip;',
+      '  world.y = max(world.y, baseW.y + 0.002);',
       '  vReact = max(react, max(dash, crushAmt));',
+      '  vCrush = max(crushAmt, crushCoreAmt);',
       '  float sc = 0.0;',
       '  for (int i = 0; i < ' + instance.maxDeathMarks + '; i++) {',
       '    if (i >= uDeathMarkCount) break;',
@@ -332,21 +386,29 @@ function createBladeMesh(instance) {
       'varying float vTone;',
       'varying float vReact;',
       'varying float vTip;',
+      'varying float vCrush;',
       'varying float vScorch;',
       'varying vec3 vWorldNormal;',
       'void main() {',
-      '  vec3 base = mix(vec3(0.08, 0.24, 0.045), vec3(0.22, 0.48, 0.10), vTone);',
-      '  vec3 tipCol = vec3(0.38, 0.52, 0.15);',
-      '  vec3 albedo = mix(base, tipCol, vTip * 0.5);',
-      '  vec3 pressed = vec3(0.06, 0.10, 0.03);',
-      '  albedo = mix(albedo, pressed, vReact * 0.5);',
+      '  float stripe = smoothstep(0.25, 1.0, sin(vUv.x * 3.14159) * 0.5 + 0.5);',
+      '  vec3 base = mix(vec3(0.055, 0.19, 0.038), vec3(0.18, 0.43, 0.095), vTone);',
+      '  vec3 midCol = mix(base, vec3(0.12, 0.34, 0.065), stripe * 0.22);',
+      '  vec3 tipCol = mix(vec3(0.34, 0.52, 0.13), vec3(0.56, 0.66, 0.2), vTone * 0.55);',
+      '  vec3 albedo = mix(midCol, tipCol, smoothstep(0.18, 1.0, vTip) * 0.55);',
+      '  vec3 pressed = vec3(0.045, 0.095, 0.028);',
+      '  albedo = mix(albedo, pressed, clamp(vCrush * 0.7 + vReact * 0.18, 0.0, 0.85));',
       '  albedo = mix(albedo, vec3(0.02, 0.015, 0.01), vScorch * 0.92);',
       '  vec3 N = normalize(vWorldNormal);',
       '  float NdotL = max(dot(N, uSunDir), 0.0);',
-      '  float wrap = NdotL * 0.7 + 0.3;',
-      '  vec3 lit = albedo * (uAmbientColor + uSunColor * uSunIntensity * wrap * 0.35);',
-      '  float scatter = max(dot(-N, uSunDir), 0.0) * vTip * 0.12;',
+      '  float wrap = NdotL * 0.62 + 0.38;',
+      '  float verticalOcclusion = mix(0.72, 1.06, vTip);',
+      '  vec3 skyBounce = vec3(0.08, 0.12, 0.055) * (1.0 - vCrush * 0.35);',
+      '  vec3 lit = albedo * (uAmbientColor + skyBounce + uSunColor * uSunIntensity * wrap * 0.34) * verticalOcclusion;',
+      '  float scatter = max(dot(-N, uSunDir), 0.0) * smoothstep(0.22, 1.0, vTip) * 0.22;',
+      '  float rim = pow(1.0 - abs(N.z), 2.0) * smoothstep(0.18, 1.0, vTip) * 0.07;',
       '  lit += albedo * uSunColor * scatter;',
+      '  lit += vec3(0.36, 0.48, 0.16) * rim * (1.0 - vCrush * 0.5);',
+      '  lit = pow(max(lit, vec3(0.0)), vec3(0.92));',
       '  gl_FragColor = vec4(lit, 1.0);',
       '}'
     ].join('\n'),
@@ -454,6 +516,15 @@ export function createReactiveGrass(options) {
       crowdRadius: opts.crowdRadius,
       strength: opts.crushStrength
     },
+    windConfig: {
+      direction: opts.windDirection && opts.windDirection.isVector2 ? opts.windDirection.clone().normalize() : DEFAULTS.windDirection.clone(),
+      strength: typeof opts.windStrength === 'number' ? opts.windStrength : DEFAULTS.windStrength,
+      fanEnabled: !!opts.fanEnabled,
+      fanPosition: opts.fanPosition && opts.fanPosition.isVector2 ? opts.fanPosition.clone() : DEFAULTS.fanPosition.clone(),
+      fanDirection: opts.fanDirection && opts.fanDirection.isVector2 ? opts.fanDirection.clone().normalize() : DEFAULTS.fanDirection.clone(),
+      fanStrength: typeof opts.fanStrength === 'number' ? opts.fanStrength : DEFAULTS.fanStrength,
+      fanRadius: typeof opts.fanRadius === 'number' ? opts.fanRadius : DEFAULTS.fanRadius
+    },
     crushPoints: [],
     crushPointCount: 0,
     deathMarks: [],
@@ -516,6 +587,13 @@ function setCommonUniforms(instance, uniforms) {
   if (uniforms.uPlayerCrushRadius) uniforms.uPlayerCrushRadius.value = instance.crushConfig.playerRadius;
   if (uniforms.uCrowdCrushRadius) uniforms.uCrowdCrushRadius.value = instance.crushConfig.crowdRadius;
   if (uniforms.uCrushStrength) uniforms.uCrushStrength.value = instance.crushConfig.strength;
+  if (uniforms.uWindDir) uniforms.uWindDir.value.copy(instance.windConfig.direction);
+  if (uniforms.uWindStrength) uniforms.uWindStrength.value = instance.windConfig.strength;
+  if (uniforms.uFanPos) uniforms.uFanPos.value.copy(instance.windConfig.fanPosition);
+  if (uniforms.uFanDir) uniforms.uFanDir.value.copy(instance.windConfig.fanDirection);
+  if (uniforms.uFanStrength) uniforms.uFanStrength.value = instance.windConfig.fanStrength;
+  if (uniforms.uFanRadius) uniforms.uFanRadius.value = instance.windConfig.fanRadius;
+  if (uniforms.uFanEnabled) uniforms.uFanEnabled.value = instance.windConfig.fanEnabled ? 1 : 0;
   if (uniforms.uSunDir) uniforms.uSunDir.value.copy(instance.sunDirection);
   if (uniforms.uSunColor) uniforms.uSunColor.value.copy(cloneColorVec3(instance.sunColor));
   if (uniforms.uSunIntensity) uniforms.uSunIntensity.value = instance.sunIntensity;
@@ -609,6 +687,27 @@ export function setGrassCrushConfig(instance, config) {
   if (typeof config.playerRadius === 'number' && isFinite(config.playerRadius)) instance.crushConfig.playerRadius = Math.max(0.05, config.playerRadius);
   if (typeof config.crowdRadius === 'number' && isFinite(config.crowdRadius)) instance.crushConfig.crowdRadius = Math.max(0.05, config.crowdRadius);
   if (typeof config.strength === 'number' && isFinite(config.strength)) instance.crushConfig.strength = Math.max(0, config.strength);
+}
+
+export function setGrassWindConfig(instance, config) {
+  if (!instance || !config) return;
+  if (config.direction && typeof config.direction.x === 'number' && typeof config.direction.y === 'number') {
+    instance.windConfig.direction.set(config.direction.x, config.direction.y);
+    if (instance.windConfig.direction.lengthSq() < 0.0001) instance.windConfig.direction.set(1, 0);
+    instance.windConfig.direction.normalize();
+  }
+  if (typeof config.strength === 'number' && isFinite(config.strength)) instance.windConfig.strength = Math.max(0, config.strength);
+  if (typeof config.fanEnabled === 'boolean') instance.windConfig.fanEnabled = config.fanEnabled;
+  if (config.fanPosition && typeof config.fanPosition.x === 'number' && typeof config.fanPosition.y === 'number') {
+    instance.windConfig.fanPosition.set(config.fanPosition.x, config.fanPosition.y);
+  }
+  if (config.fanDirection && typeof config.fanDirection.x === 'number' && typeof config.fanDirection.y === 'number') {
+    instance.windConfig.fanDirection.set(config.fanDirection.x, config.fanDirection.y);
+    if (instance.windConfig.fanDirection.lengthSq() < 0.0001) instance.windConfig.fanDirection.set(1, 0);
+    instance.windConfig.fanDirection.normalize();
+  }
+  if (typeof config.fanStrength === 'number' && isFinite(config.fanStrength)) instance.windConfig.fanStrength = Math.max(0, config.fanStrength);
+  if (typeof config.fanRadius === 'number' && isFinite(config.fanRadius)) instance.windConfig.fanRadius = Math.max(0.2, config.fanRadius);
 }
 
 export function getGrassCrushConfig(instance) {

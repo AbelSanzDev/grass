@@ -12,7 +12,8 @@ import {
   clearGrassDeathMarks,
   setGrassCrushPoints,
   clearGrassCrushPoints,
-  setGrassCrushConfig
+  setGrassCrushConfig,
+  setGrassWindConfig
 } from './reactiveGrass.js';
 
 var QUALITY_PRESETS = {
@@ -26,8 +27,16 @@ var QUALITY_LEVELS = ['low', 'medium', 'high', 'premium'];
 var quality = readInitialQuality();
 var floorSize = 26;
 var moveSpeed = 5.5;
-var crushRadius = 0.75;
-var crushStrength = 1.0;
+var crushRadius = 1.05;
+var crushStrength = 1.65;
+var windStrength = 1.0;
+var windAngle = 22;
+var fanEnabled = false;
+var fanPlaceMode = false;
+var fanStrength = 1.35;
+var fanRadius = 5.5;
+var fanAngle = 8;
+var fanPosition = new THREE.Vector2(-4, -2);
 var autoPilot = true;
 var crowdCrush = false;
 
@@ -41,6 +50,8 @@ var grass;
 var arenaRing;
 var probe;
 var probeVisual;
+var fanVisual;
+var fanConeVisual;
 var probeHeading = new THREE.Vector3(0, 0, 1);
 var probeTravel = 0;
 var autoPhase = 0;
@@ -76,6 +87,18 @@ var ui = {
   crushRadiusValue: document.getElementById('crush-radius-value'),
   crushStrength: document.getElementById('crush-strength'),
   crushStrengthValue: document.getElementById('crush-strength-value'),
+  windStrength: document.getElementById('wind-strength'),
+  windStrengthValue: document.getElementById('wind-strength-value'),
+  windAngle: document.getElementById('wind-angle'),
+  windAngleValue: document.getElementById('wind-angle-value'),
+  fanEnabled: document.getElementById('toggle-fan'),
+  fanPlace: document.getElementById('btn-place-fan'),
+  fanStrength: document.getElementById('fan-strength'),
+  fanStrengthValue: document.getElementById('fan-strength-value'),
+  fanRadius: document.getElementById('fan-radius'),
+  fanRadiusValue: document.getElementById('fan-radius-value'),
+  fanAngle: document.getElementById('fan-angle'),
+  fanAngleValue: document.getElementById('fan-angle-value'),
   autoPilot: document.getElementById('toggle-autopilot'),
   crowd: document.getElementById('toggle-crowd'),
   qualityRow: document.getElementById('quality-row'),
@@ -93,6 +116,12 @@ function boot() {
   moveSpeed = Number(ui.moveSpeed.value) || moveSpeed;
   crushRadius = Number(ui.crushRadius.value) || crushRadius;
   crushStrength = Number(ui.crushStrength.value) || crushStrength;
+  windStrength = Number(ui.windStrength.value) || windStrength;
+  windAngle = Number(ui.windAngle.value) || windAngle;
+  fanEnabled = !!ui.fanEnabled.checked;
+  fanStrength = Number(ui.fanStrength.value) || fanStrength;
+  fanRadius = Number(ui.fanRadius.value) || fanRadius;
+  fanAngle = Number(ui.fanAngle.value) || fanAngle;
   autoPilot = !!ui.autoPilot.checked;
   crowdCrush = !!ui.crowd.checked;
 
@@ -122,14 +151,14 @@ function initThree() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.12;
   if (THREE.SRGBColorSpace !== undefined && renderer.outputColorSpace !== undefined) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
   }
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x171b12);
-  scene.fog = new THREE.FogExp2(0x171b12, 0.026);
+  scene.background = new THREE.Color(0x151a10);
+  scene.fog = new THREE.FogExp2(0x151a10, 0.023);
 
   camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 120);
   camera.position.set(8.5, 7.4, 8.5);
@@ -143,11 +172,11 @@ function initThree() {
   controls.target.set(0, 0.9, 0);
   controls.update();
 
-  var ambient = new THREE.AmbientLight(0xc8c19c, 0.7);
+  var ambient = new THREE.AmbientLight(0xb8c49b, 0.46);
   scene.add(ambient);
 
-  var sun = new THREE.DirectionalLight(0xffe1ae, 2.6);
-  sun.position.set(-5, 8, 4);
+  var sun = new THREE.DirectionalLight(0xffe0a1, 3.15);
+  sun.position.set(-6, 8.5, 3.5);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 1;
@@ -158,11 +187,11 @@ function initThree() {
   sun.shadow.camera.bottom = -14;
   scene.add(sun);
 
-  var fill = new THREE.DirectionalLight(0x7da05a, 0.45);
-  fill.position.set(6, 4, -5);
+  var fill = new THREE.DirectionalLight(0x6f9857, 0.34);
+  fill.position.set(6, 3.8, -5.5);
   scene.add(fill);
 
-  var hemi = new THREE.HemisphereLight(0xa4c578, 0x171510, 0.45);
+  var hemi = new THREE.HemisphereLight(0xa8c47d, 0x141008, 0.56);
   scene.add(hemi);
 
   var base = new THREE.Mesh(
@@ -277,6 +306,56 @@ function initHelpers() {
     scene.add(scorch);
     debugScorchMarkers.push(scorch);
   }
+
+  initFanVisual();
+}
+
+function initFanVisual() {
+  fanVisual = new THREE.Group();
+  scene.add(fanVisual);
+
+  var baseMat = new THREE.MeshStandardMaterial({
+    color: 0x24322a,
+    roughness: 0.72,
+    metalness: 0.08
+  });
+  var accentMat = new THREE.MeshStandardMaterial({
+    color: 0x9fe86b,
+    emissive: 0x1f4a12,
+    roughness: 0.48,
+    metalness: 0.02
+  });
+
+  var base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.16, 18), baseMat);
+  base.position.y = 0.08;
+  base.castShadow = true;
+  fanVisual.add(base);
+
+  var body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.28, 0.42), baseMat);
+  body.position.set(0, 0.34, 0);
+  body.castShadow = true;
+  fanVisual.add(body);
+
+  var nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.42, 18), accentMat);
+  nozzle.position.set(0, 0.34, 0.36);
+  nozzle.rotation.x = Math.PI * 0.5;
+  nozzle.castShadow = true;
+  fanVisual.add(nozzle);
+
+  fanConeVisual = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 36, -Math.PI * 0.22, Math.PI * 0.44),
+    new THREE.MeshBasicMaterial({
+      color: 0x9fe86b,
+      transparent: true,
+      opacity: 0.16,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+  fanConeVisual.rotation.x = -Math.PI / 2;
+  fanConeVisual.position.y = 0.025;
+  scene.add(fanConeVisual);
+  updateFanVisual();
 }
 
 function bindUi() {
@@ -313,6 +392,56 @@ function bindUi() {
     applyCrushConfig();
   });
 
+  ui.windStrength.addEventListener('input', function () {
+    windStrength = Number(ui.windStrength.value);
+    if (!isFinite(windStrength)) windStrength = 1.0;
+    ui.windStrengthValue.textContent = windStrength.toFixed(2);
+    applyWindConfig();
+  });
+
+  ui.windAngle.addEventListener('input', function () {
+    windAngle = Number(ui.windAngle.value);
+    if (!isFinite(windAngle)) windAngle = 0;
+    ui.windAngleValue.textContent = Math.round(windAngle) + ' deg';
+    applyWindConfig();
+  });
+
+  ui.fanEnabled.addEventListener('change', function () {
+    fanEnabled = !!ui.fanEnabled.checked;
+    fanPlaceMode = false;
+    updateFanPlaceButton();
+    applyWindConfig();
+  });
+
+  ui.fanPlace.addEventListener('click', function () {
+    fanEnabled = true;
+    ui.fanEnabled.checked = true;
+    fanPlaceMode = !fanPlaceMode;
+    updateFanPlaceButton();
+    applyWindConfig();
+  });
+
+  ui.fanStrength.addEventListener('input', function () {
+    fanStrength = Number(ui.fanStrength.value);
+    if (!isFinite(fanStrength)) fanStrength = 1.35;
+    ui.fanStrengthValue.textContent = fanStrength.toFixed(2);
+    applyWindConfig();
+  });
+
+  ui.fanRadius.addEventListener('input', function () {
+    fanRadius = Number(ui.fanRadius.value);
+    if (!isFinite(fanRadius)) fanRadius = 5.5;
+    ui.fanRadiusValue.textContent = fanRadius.toFixed(1);
+    applyWindConfig();
+  });
+
+  ui.fanAngle.addEventListener('input', function () {
+    fanAngle = Number(ui.fanAngle.value);
+    if (!isFinite(fanAngle)) fanAngle = 0;
+    ui.fanAngleValue.textContent = Math.round(fanAngle) + ' deg';
+    applyWindConfig();
+  });
+
   ui.autoPilot.addEventListener('change', function () {
     autoPilot = !!ui.autoPilot.checked;
     playerVelocity.set(0, 0, 0);
@@ -346,10 +475,18 @@ function rebuildGrass() {
     bladeCount: QUALITY_PRESETS[quality].bladeCount,
     playerRadius: crushRadius,
     crowdRadius: crushRadius,
-    crushStrength: crushStrength
+    crushStrength: crushStrength,
+    windDirection: directionFromAngle(windAngle),
+    windStrength: windStrength,
+    fanEnabled: fanEnabled,
+    fanPosition: fanPosition,
+    fanDirection: directionFromAngle(fanAngle),
+    fanStrength: fanStrength,
+    fanRadius: fanRadius
   });
   attachReactiveGrass(grass, patchHost);
   applyCrushConfig();
+  applyWindConfig();
   updateArenaRing();
 }
 
@@ -383,6 +520,7 @@ function tick() {
   var dt = Math.min(clock.getDelta(), 0.05);
   updateProbe(dt);
   updateCrowdCrush();
+  updateFanVisual();
   if (grass) {
     setReactiveGrassPlayerState(grass, probe.position, playerVelocity);
     updateReactiveGrass(grass, dt);
@@ -529,6 +667,13 @@ function refreshUi() {
   ui.moveSpeedValue.textContent = moveSpeed.toFixed(1);
   ui.crushRadiusValue.textContent = crushRadius.toFixed(2);
   ui.crushStrengthValue.textContent = crushStrength.toFixed(2);
+  ui.windStrengthValue.textContent = windStrength.toFixed(2);
+  ui.windAngleValue.textContent = Math.round(windAngle) + ' deg';
+  ui.fanStrengthValue.textContent = fanStrength.toFixed(2);
+  ui.fanRadiusValue.textContent = fanRadius.toFixed(1);
+  ui.fanAngleValue.textContent = Math.round(fanAngle) + ' deg';
+  updateFanPlaceButton();
+  updateFanVisual();
   updateQualityButtons();
   updateStats(0);
 }
@@ -540,6 +685,50 @@ function applyCrushConfig() {
     crowdRadius: crushRadius,
     strength: crushStrength
   });
+}
+
+function applyWindConfig() {
+  if (grass) {
+    setGrassWindConfig(grass, {
+      direction: directionFromAngle(windAngle),
+      strength: windStrength,
+      fanEnabled: fanEnabled,
+      fanPosition: fanPosition,
+      fanDirection: directionFromAngle(fanAngle),
+      fanStrength: fanStrength,
+      fanRadius: fanRadius
+    });
+  }
+  updateFanVisual();
+}
+
+function directionFromAngle(degrees) {
+  var r = THREE.MathUtils.degToRad(degrees);
+  return new THREE.Vector2(Math.sin(r), Math.cos(r));
+}
+
+function updateFanVisual() {
+  if (!fanVisual || !fanConeVisual) return;
+  var dir = directionFromAngle(fanAngle);
+  fanVisual.position.set(fanPosition.x, 0, fanPosition.y);
+  fanVisual.rotation.y = Math.atan2(dir.x, dir.y);
+  fanVisual.visible = fanEnabled;
+
+  fanConeVisual.position.set(
+    fanPosition.x + dir.x * fanRadius * 0.5,
+    0.025,
+    fanPosition.y + dir.y * fanRadius * 0.5
+  );
+  fanConeVisual.rotation.z = -Math.atan2(dir.x, dir.y);
+  fanConeVisual.scale.set(fanRadius * 0.42, fanRadius, 1);
+  fanConeVisual.visible = fanEnabled;
+  fanConeVisual.material.opacity = fanPlaceMode ? 0.24 : 0.14;
+}
+
+function updateFanPlaceButton() {
+  if (!ui.fanPlace) return;
+  ui.fanPlace.classList.toggle('active', fanPlaceMode);
+  ui.fanPlace.textContent = fanPlaceMode ? 'Click ground' : 'Place fan';
 }
 
 function updateQualityButtons() {
@@ -561,6 +750,13 @@ function onPointerDown(event) {
   pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
   if (raycaster.ray.intersectPlane(plane, hitPoint)) {
+    if (fanPlaceMode) {
+      fanPosition.set(hitPoint.x, hitPoint.z);
+      fanPlaceMode = false;
+      updateFanPlaceButton();
+      applyWindConfig();
+      return;
+    }
     probe.position.set(hitPoint.x, 0, hitPoint.z);
     clampProbeToFloor();
     lastFramePos.copy(probe.position);

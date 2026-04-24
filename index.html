@@ -313,19 +313,75 @@
 
       <div class="row">
         <label for="crush-radius">Crush range</label>
-        <input id="crush-radius" type="range" min="0.2" max="2" step="0.05" value="0.75" />
+        <input id="crush-radius" type="range" min="0.2" max="2" step="0.05" value="1.05" />
         <div class="range-meta">
           <span>actual flattening radius</span>
-          <span id="crush-radius-value">0.75</span>
+          <span id="crush-radius-value">1.05</span>
         </div>
       </div>
 
       <div class="row">
         <label for="crush-strength">Crush amount</label>
-        <input id="crush-strength" type="range" min="0" max="2.5" step="0.05" value="1" />
+        <input id="crush-strength" type="range" min="0" max="2.5" step="0.05" value="1.65" />
         <div class="range-meta">
           <span>how much it flattens inside range</span>
-          <span id="crush-strength-value">1.00</span>
+          <span id="crush-strength-value">1.65</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <p class="section-title">Wind</p>
+      <div class="row">
+        <label for="wind-strength">Wind strength</label>
+        <input id="wind-strength" type="range" min="0" max="2.2" step="0.05" value="1" />
+        <div class="range-meta">
+          <span>single direction flow</span>
+          <span id="wind-strength-value">1.00</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <label for="wind-angle">Wind direction</label>
+        <input id="wind-angle" type="range" min="-180" max="180" step="1" value="22" />
+        <div class="range-meta">
+          <span>global grass lean</span>
+          <span id="wind-angle-value">22 deg</span>
+        </div>
+      </div>
+
+      <div class="toggle-grid">
+        <label class="toggle">
+          <span>Fan</span>
+          <input id="toggle-fan" type="checkbox" />
+        </label>
+        <button type="button" id="btn-place-fan">Place fan</button>
+      </div>
+
+      <div class="row">
+        <label for="fan-strength">Fan strength</label>
+        <input id="fan-strength" type="range" min="0" max="3" step="0.05" value="1.35" />
+        <div class="range-meta">
+          <span>local cone push</span>
+          <span id="fan-strength-value">1.35</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <label for="fan-radius">Fan range</label>
+        <input id="fan-radius" type="range" min="1.5" max="10" step="0.1" value="5.5" />
+        <div class="range-meta">
+          <span>air reach</span>
+          <span id="fan-radius-value">5.5</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <label for="fan-angle">Fan direction</label>
+        <input id="fan-angle" type="range" min="-180" max="180" step="1" value="8" />
+        <div class="range-meta">
+          <span>where the fan blows</span>
+          <span id="fan-angle-value">8 deg</span>
         </div>
       </div>
     </section>
